@@ -191,6 +191,18 @@ export default function MovimientosPage() {
     return true
   })
 
+  // Saldo acumulado: ordenar asc para calcular y asignar balance a cada fila
+  const balanceMap = new Map<string, number>()
+  const sortedAsc = [...filtered].sort((a, b) => {
+    const d = new Date(a.date).getTime() - new Date(b.date).getTime()
+    return d !== 0 ? d : new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  })
+  let running = 0
+  for (const t of sortedAsc) {
+    running += t.type === 'income' ? Number(t.amount) : -Number(t.amount)
+    balanceMap.set(t.id, running)
+  }
+
   const fmt = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 2 })
   const hasFilters = search || filterType !== 'all' || filterAccount || filterCategory
 
@@ -201,7 +213,14 @@ export default function MovimientosPage() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Movimientos</h1>
-          <p className="text-slate-500 text-sm">{filtered.length} de {txs.length} movimiento{txs.length !== 1 ? 's' : ''}</p>
+          <div className="flex items-center gap-3 mt-0.5">
+            <p className="text-slate-500 text-sm">{filtered.length} de {txs.length} movimiento{txs.length !== 1 ? 's' : ''}</p>
+            {filtered.length > 0 && (
+              <span className={`text-sm font-semibold px-2 py-0.5 rounded-md ${running >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                Saldo: ${fmt(running)}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <DropdownMenu>
@@ -278,9 +297,14 @@ export default function MovimientosPage() {
                   {t.description && <span className="text-xs text-slate-400 truncate">· {t.description}</span>}
                 </div>
               </div>
-              <span className={`text-base font-bold shrink-0 ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                {t.type === 'income' ? '+' : '-'}${fmt(Number(t.amount))}
-              </span>
+              <div className="text-right shrink-0">
+                <p className={`text-base font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                  {t.type === 'income' ? '+' : '-'}${fmt(Number(t.amount))}
+                </p>
+                <p className={`text-xs font-medium ${(balanceMap.get(t.id) ?? 0) >= 0 ? 'text-slate-500' : 'text-red-400'}`}>
+                  Saldo: ${fmt(balanceMap.get(t.id) ?? 0)}
+                </p>
+              </div>
               <DropdownMenu>
                 <DropdownMenuTrigger className="inline-flex items-center justify-center rounded-md h-7 w-7 shrink-0 hover:bg-accent transition-colors">
                   <MoreVertical className="h-4 w-4" />
