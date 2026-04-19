@@ -77,11 +77,13 @@ export default function MovimientosPage() {
   async function save() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    if (!form.title.trim()) { toast.error('El título es obligatorio'); return }
+    const catName = categories.find(c => c.id === form.category_id)?.name
+    const resolvedTitle = form.title.trim() || catName || ''
+    if (!resolvedTitle) { toast.error('Ingresá un título o seleccioná una categoría'); return }
     if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { toast.error('El monto debe ser mayor a 0'); return }
     if (!form.account_id) { toast.error('Seleccioná una cuenta'); return }
     const payload = {
-      title: form.title.trim(), description: form.description || null,
+      title: resolvedTitle, description: form.description || null,
       amount: Number(form.amount), type: form.type, date: form.date,
       account_id: form.account_id, category_id: form.category_id || null,
     }
@@ -336,7 +338,14 @@ export default function MovimientosPage() {
               </div>
             </div>
             <div>
-              <Label>Título *</Label>
+              <Label>
+                Título{!form.category_id && ' *'}
+                {form.category_id && !form.title.trim() && (
+                  <span className="ml-2 text-xs font-normal text-slate-400">
+                    (se usará la categoría)
+                  </span>
+                )}
+              </Label>
               <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="ej. Supermercado" className="mt-1" />
             </div>
             <div className="grid grid-cols-2 gap-3">
