@@ -8,7 +8,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
@@ -37,16 +36,20 @@ const blankTx = (): TxForm => ({
 const blankQAcc: QAccForm = { name: '', emoji: '💰', color: '#3b82f6' }
 const blankQCat: QCatForm = { name: '', icon: '📁', color: '#6b7280', type: 'both' }
 
-// ---------- helpers de display ----------
-function AccLabel({ accounts, id, placeholder = 'Seleccionar cuenta' }: { accounts: Account[]; id: string; placeholder?: string }) {
-  const a = accounts.find(x => x.id === id)
-  if (!a) return <span className="text-muted-foreground">{placeholder}</span>
-  return <span>{a.emoji} {a.name}</span>
-}
-function CatLabel({ categories, id, placeholder = 'Sin categoría' }: { categories: Category[]; id: string; placeholder?: string }) {
-  const c = categories.find(x => x.id === id)
-  if (!c) return <span className="text-muted-foreground">{placeholder}</span>
-  return <span>{c.icon} {c.name}</span>
+// ---------- Select nativo con estilo consistente ----------
+function AppSelect({ value, onChange, children, className }: {
+  value: string; onChange: (v: string) => void
+  children: React.ReactNode; className?: string
+}) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      className={`h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 ${className ?? ''}`}
+    >
+      {children}
+    </select>
+  )
 }
 
 // ---------- componente principal ----------
@@ -192,9 +195,9 @@ export default function MovimientosPage() {
   async function exportPDF() {
     const { default: jsPDF } = await import('jspdf')
     const { default: autoTable } = await import('jspdf-autotable')
-    const from = new Date(pdfFrom)
-    const to = new Date(pdfTo); to.setHours(23, 59, 59)
-    const filtered = txs.filter(t => { const d = new Date(t.date); return d >= from && d <= to })
+    const from = new Date(pdfFrom + 'T00:00:00')
+    const to = new Date(pdfTo + 'T23:59:59')
+    const filtered = txs.filter(t => { const d = new Date(t.date + 'T12:00:00'); return d >= from && d <= to })
     const doc = new jsPDF()
     doc.setFontSize(16); doc.text('Mi Registro — Movimientos', 14, 18)
     doc.setFontSize(10); doc.text(`Período: ${format(from, 'dd/MM/yyyy')} — ${format(to, 'dd/MM/yyyy')}`, 14, 26)
@@ -202,7 +205,7 @@ export default function MovimientosPage() {
     const expenses = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
     doc.text(`Ingresos: $${income.toFixed(2)}   Gastos: $${expenses.toFixed(2)}   Balance: $${(income - expenses).toFixed(2)}`, 14, 32)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    autoTable(doc, { startY: 38, head: [['Fecha','Título','Categoría','Cuenta','Tipo','Monto']], body: filtered.map(t => [format(new Date(t.date),'dd/MM/yyyy'), t.title, (t.category as any)?.name||'-', (t.account as any)?.name||'-', t.type==='income'?'Ingreso':'Gasto', `$${Number(t.amount).toFixed(2)}`]), styles: { fontSize: 9 }, headStyles: { fillColor: [30,41,59] } })
+    autoTable(doc, { startY: 38, head: [['Fecha','Título','Categoría','Cuenta','Tipo','Monto']], body: filtered.map(t => [format(new Date(t.date + 'T12:00:00'),'dd/MM/yyyy'), t.title, (t.category as any)?.name||'-', (t.account as any)?.name||'-', t.type==='income'?'Ingreso':'Gasto', `$${Number(t.amount).toFixed(2)}`]), styles: { fontSize: 9 }, headStyles: { fillColor: [30,41,59] } })
     doc.save(`movimientos-${pdfFrom}-${pdfTo}.pdf`)
     setPdfOpen(false); toast.success('PDF exportado')
   }
@@ -288,38 +291,19 @@ export default function MovimientosPage() {
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." className="pl-8 h-9" />
           {search && <button onClick={() => setSearch('')} className="absolute right-2.5 top-2.5"><X className="h-4 w-4 text-slate-400" /></button>}
         </div>
-        <Select value={filterType} onValueChange={v => setFilterType(v as 'all' | 'income' | 'expense')}>
-          <SelectTrigger className="w-32 h-9">
-            {{ all: 'Todos', income: 'Ingresos', expense: 'Gastos' }[filterType]}
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            <SelectItem value="income">Ingresos</SelectItem>
-            <SelectItem value="expense">Gastos</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={filterAccount} onValueChange={v => setFilterAccount(v ?? '')}>
-          <SelectTrigger className="w-40 h-9">
-            {filterAccount
-              ? <AccLabel accounts={accounts} id={filterAccount} />
-              : <span className="text-muted-foreground text-sm">Cuenta</span>}
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">Todas las cuentas</SelectItem>
-            {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.emoji} {a.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={filterCategory} onValueChange={v => setFilterCategory(v ?? '')}>
-          <SelectTrigger className="w-40 h-9">
-            {filterCategory
-              ? <CatLabel categories={categories} id={filterCategory} />
-              : <span className="text-muted-foreground text-sm">Categoría</span>}
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">Todas las categorías</SelectItem>
-            {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.icon} {c.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <AppSelect value={filterType} onChange={v => setFilterType(v as 'all' | 'income' | 'expense')} className="w-32">
+          <option value="all">Todos</option>
+          <option value="income">Ingresos</option>
+          <option value="expense">Gastos</option>
+        </AppSelect>
+        <AppSelect value={filterAccount} onChange={setFilterAccount} className="w-44">
+          <option value="">Todas las cuentas</option>
+          {accounts.map(a => <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>)}
+        </AppSelect>
+        <AppSelect value={filterCategory} onChange={setFilterCategory} className="w-44">
+          <option value="">Todas las categorías</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+        </AppSelect>
         {hasFilters && (
           <Button variant="ghost" size="sm" className="h-9" onClick={() => { setSearch(''); setFilterType('all'); setFilterAccount(''); setFilterCategory('') }}>
             <X className="h-4 w-4 mr-1" />Limpiar
@@ -348,7 +332,7 @@ export default function MovimientosPage() {
                   {(t.category as any)?.name && <Badge variant="outline" className="text-xs h-5">{(t.category as any).icon} {(t.category as any).name}</Badge>}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs text-slate-400">{format(new Date(t.date), 'dd MMM yyyy', { locale: es })}</span>
+                  <span className="text-xs text-slate-400">{format(new Date(t.date + 'T12:00:00'), 'dd MMM yyyy', { locale: es })}</span>
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   {(t.account as any)?.name && <span className="text-xs text-slate-400">· {(t.account as any).emoji} {(t.account as any).name}</span>}
                   {t.description && <span className="text-xs text-slate-400 truncate">· {t.description}</span>}
@@ -426,16 +410,14 @@ export default function MovimientosPage() {
                   <Plus className="w-3 h-3" />Nueva cuenta
                 </button>
               </div>
-              <Select value={form.account_id} onValueChange={v => setForm(f => ({ ...f, account_id: v ?? '' }))}>
-                <SelectTrigger className="w-full">
-                  <AccLabel accounts={accounts} id={form.account_id} />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.length === 0
-                    ? <div className="px-3 py-2 text-sm text-slate-400">No hay cuentas. Creá una primero.</div>
-                    : accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.emoji} {a.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <AppSelect value={form.account_id} onChange={v => setForm(f => ({ ...f, account_id: v }))} className="w-full">
+                {accounts.length === 0
+                  ? <option value="" disabled>No hay cuentas. Creá una primero.</option>
+                  : <>
+                      <option value="">Seleccionar cuenta</option>
+                      {accounts.map(a => <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>)}
+                    </>}
+              </AppSelect>
             </div>
 
             {/* Categoría */}
@@ -448,15 +430,10 @@ export default function MovimientosPage() {
                   <Plus className="w-3 h-3" />Nueva categoría
                 </button>
               </div>
-              <Select value={form.category_id} onValueChange={v => setForm(f => ({ ...f, category_id: v ?? '' }))}>
-                <SelectTrigger className="w-full">
-                  <CatLabel categories={categories} id={form.category_id} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Sin categoría</SelectItem>
-                  {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.icon} {c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <AppSelect value={form.category_id} onChange={v => setForm(f => ({ ...f, category_id: v }))} className="w-full">
+                <option value="">Sin categoría</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+              </AppSelect>
             </div>
 
             {/* Descripción */}
@@ -542,16 +519,11 @@ export default function MovimientosPage() {
             </div>
             <div>
               <Label>Tipo</Label>
-              <Select value={qCatForm.type} onValueChange={v => setQCatForm(f => ({ ...f, type: (v ?? 'both') as CategoryType }))}>
-                <SelectTrigger className="mt-1 w-full">
-                  {{ income: 'Ingreso', expense: 'Gasto', both: 'Ambos' }[qCatForm.type]}
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="income">Ingreso</SelectItem>
-                  <SelectItem value="expense">Gasto</SelectItem>
-                  <SelectItem value="both">Ambos</SelectItem>
-                </SelectContent>
-              </Select>
+              <AppSelect value={qCatForm.type} onChange={v => setQCatForm(f => ({ ...f, type: v as CategoryType }))} className="mt-1 w-full">
+                <option value="income">Ingreso</option>
+                <option value="expense">Gasto</option>
+                <option value="both">Ambos</option>
+              </AppSelect>
             </div>
           </div>
           <DialogFooter>
@@ -581,7 +553,7 @@ export default function MovimientosPage() {
             <div><Label>Desde</Label><Input value={pdfFrom} onChange={e => setPdfFrom(e.target.value)} type="date" className="mt-1" /></div>
             <div><Label>Hasta</Label><Input value={pdfTo} onChange={e => setPdfTo(e.target.value)} type="date" className="mt-1" /></div>
             <p className="text-xs text-slate-400">
-              {txs.filter(t => { const d = new Date(t.date); const f = new Date(pdfFrom); const to = new Date(pdfTo); to.setHours(23,59,59); return d >= f && d <= to }).length} movimientos en el rango seleccionado.
+              {txs.filter(t => { const d = new Date(t.date + 'T12:00:00'); const f = new Date(pdfFrom + 'T00:00:00'); const to = new Date(pdfTo + 'T23:59:59'); return d >= f && d <= to }).length} movimientos en el rango seleccionado.
             </p>
           </div>
           <DialogFooter>
